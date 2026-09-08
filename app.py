@@ -319,7 +319,14 @@ DASHBOARD_HTML = """<!doctype html>
   .card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .04em; }
   .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   .warn { color: #f0a020; } .bad { color: #e05252; } .ok { color: #4caf7a; }
-  canvas { background: #10131a; border: 1px solid #262b36; border-radius: 8px; width: 100%; height: 220px; }
+  canvas { background: #10131a; border: 1px solid #262b36; border-radius: 8px; width: 100%; height: 220px; display: block; }
+  .chart-wrap { position: relative; }
+  .tooltip {
+    position: absolute; pointer-events: none; transform: translate(-50%, -100%);
+    background: #1b1f27; border: 1px solid #333; border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; white-space: nowrap; margin-top: -8px;
+  }
+  .tooltip .t { color: #888; font-size: 11px; }
   table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #262b36; }
   th { color: #888; font-weight: 500; }
@@ -344,7 +351,10 @@ DASHBOARD_HTML = """<!doctype html>
   </div>
 
   <div class="cards" id="cards"></div>
-  <canvas id="chart" height="220"></canvas>
+  <div class="chart-wrap">
+    <canvas id="chart" height="220"></canvas>
+    <div class="tooltip" id="tooltip" hidden></div>
+  </div>
 
   <h3>Recent outages &amp; spikes</h3>
   <table>
@@ -359,6 +369,11 @@ targets.forEach(t => {
   const o = document.createElement("option"); o.value = t; o.textContent = t; targetSel.appendChild(o);
 });
 const rangeSel = document.getElementById("range");
+const tooltip = document.getElementById("tooltip");
+
+let currentPoints = [];
+let currentRange = "1h";
+let currentGeom = null;
 
 function fmtTime(ts) {
   if (!ts) return "";
@@ -384,7 +399,9 @@ async function refresh() {
   `;
 
   const series = await fetch(`/api/series?target=${target}&range=${range}`, noStore).then(r => r.json());
-  drawChart(series.points, range);
+  currentPoints = series.points;
+  currentRange = range;
+  currentGeom = drawChart(currentPoints, currentRange);
 
   const events = await fetch(`/api/events?target=${target}&range=${range}&limit=100`, noStore).then(r => r.json());
   const tbody = document.getElementById("events");
@@ -416,7 +433,7 @@ function drawChart(points, range) {
   const w = canvas.width = canvas.clientWidth;
   const h = canvas.height = 220;
   ctx.clearRect(0, 0, w, h);
-  if (!points.length) return;
+  if (!points.length) return null;
 
   const values = points.map(p => p.avg_rtt_ms).filter(v => v !== null);
   const maxRtt = Math.max(10, ...values, 1);
@@ -461,7 +478,63 @@ function drawChart(points, range) {
     if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
   });
   ctx.stroke();
+
+  return { padL, padT, plotW, plotH, maxRtt, n };
 }
+
+function fmtFullTime(ts) {
+  return new Date(ts * 1000).toLocaleString(undefined, {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+}
+
+function onChartHover(e) {
+  if (!currentGeom || !currentPoints.length) return;
+  const canvas = document.getElementById("chart");
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const { padL, padT, plotW, plotH, maxRtt, n } = currentGeom;
+
+  let i = Math.floor(((mouseX - padL) / plotW) * n);
+  i = Math.max(0, Math.min(n - 1, i));
+  const p = currentPoints[i];
+  const x = padL + (i / n) * plotW;
+
+  drawChart(currentPoints, currentRange);
+  const ctx = canvas.getContext("2d");
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+  ctx.setLineDash([]);
+  if (p.avg_rtt_ms !== null) {
+    const y = padT + plotH - (p.avg_rtt_ms / maxRtt) * plotH;
+    ctx.fillStyle = "#4caf7a";
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  const rttText = p.avg_rtt_ms !== null ? `${p.avg_rtt_ms} ms` : "no reply";
+  const lossText = p.loss > 0 ? ` &middot; ${p.loss}/${p.count} lost` : "";
+  tooltip.innerHTML = `<div class="t">${fmtFullTime(p.ts)}</div><div>${rttText}${lossText}</div>`;
+  tooltip.hidden = false;
+
+  const pointY = p.avg_rtt_ms !== null ? (padT + plotH - (p.avg_rtt_ms / maxRtt) * plotH) : padT;
+  tooltip.style.top = pointY + "px";
+  tooltip.style.left = x + "px";
+
+  const wrapRect = canvas.parentElement.getBoundingClientRect();
+  const tw = tooltip.offsetWidth;
+  if (x - tw / 2 < 0) tooltip.style.left = (tw / 2) + "px";
+  if (x + tw / 2 > wrapRect.width) tooltip.style.left = (wrapRect.width - tw / 2) + "px";
+}
+
+function onChartLeave() {
+  tooltip.hidden = true;
+  if (currentGeom) drawChart(currentPoints, currentRange);
+}
+
+document.getElementById("chart").addEventListener("mousemove", onChartHover);
+document.getElementById("chart").addEventListener("mouseleave", onChartLeave);
 
 targetSel.addEventListener("change", refresh);
 rangeSel.addEventListener("change", refresh);
