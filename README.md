@@ -26,6 +26,8 @@ offline.
   "problem is upstream of my router" — if only the public targets drop while the gateway stays up,
   it's the ISP's problem.
 
+![Dashboard showing per-target summary cards and a latency chart with hover tooltip support](docs/watcher.png)
+
 ## Run it
 
 ```bash
