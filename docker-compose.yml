@@ -1,0 +1,24 @@
+services:
+  echo-watcher:
+    build: .
+    container_name: echo-watcher
+    restart: unless-stopped
+    network_mode: host
+    # Host networking takes Docker's bridge/NAT out of the measurement path —
+    # more accurate for catching sub-millisecond jitter. Requires a Linux
+    # Docker host (e.g. the Proxmox LXC this is deployed on); on Windows/Mac
+    # Docker Desktop, swap this for `ports: ["8531:8531"]` instead.
+    environment:
+      - TARGETS=${TARGETS:-1.1.1.1,8.8.8.8,192.168.1.254}
+      - INTERVAL=${INTERVAL:-1}
+      - PING_TIMEOUT=${PING_TIMEOUT:-1}
+      - OUTAGE_FAILS=${OUTAGE_FAILS:-2}
+      - SPIKE_ABS_MS=${SPIKE_ABS_MS:-150}
+      - SPIKE_JITTER_MS=${SPIKE_JITTER_MS:-40}
+      - RETENTION_DAYS=${RETENTION_DAYS:-14}
+      - PORT=8531
+    volumes:
+      - echo-watcher-data:/data
+
+volumes:
+  echo-watcher-data:

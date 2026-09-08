@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+# SQLite data (bind-mounted or volume-mounted at runtime, not part of the repo)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+.env
+.venv/
