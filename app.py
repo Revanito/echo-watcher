@@ -330,7 +330,7 @@ DASHBOARD_HTML = """<!doctype html>
 </head>
 <body>
   <h1>Ping Monitor</h1>
-  <div class="sub">Monitoring: __TARGETS__ &middot; refreshes every 10s</div>
+  <div class="sub">Monitoring: __TARGETS__ &middot; refreshes every 10s &middot; <span id="updated">loading…</span></div>
 
   <div class="controls">
     <select id="target"></select>
@@ -368,8 +368,9 @@ function fmtTime(ts) {
 async function refresh() {
   const target = targetSel.value;
   const range = rangeSel.value;
+  const noStore = { cache: "no-store" };
 
-  const summaries = await fetch(`/api/summary?range=${range}`).then(r => r.json());
+  const summaries = await fetch(`/api/summary?range=${range}`, noStore).then(r => r.json());
   const s = summaries.find(x => x.target === target) || summaries[0];
   const cards = document.getElementById("cards");
   const uptimeClass = s.uptime_pct >= 99.9 ? "ok" : s.uptime_pct >= 99 ? "warn" : "bad";
@@ -382,10 +383,10 @@ async function refresh() {
     <div class="card"><div class="label">Spikes</div><div class="value ${s.spike_count ? 'warn' : 'ok'}">${s.spike_count}</div></div>
   `;
 
-  const series = await fetch(`/api/series?target=${target}&range=${range}`).then(r => r.json());
-  drawChart(series.points);
+  const series = await fetch(`/api/series?target=${target}&range=${range}`, noStore).then(r => r.json());
+  drawChart(series.points, range);
 
-  const events = await fetch(`/api/events?target=${target}&range=${range}&limit=100`).then(r => r.json());
+  const events = await fetch(`/api/events?target=${target}&range=${range}&limit=100`, noStore).then(r => r.json());
   const tbody = document.getElementById("events");
   tbody.innerHTML = events.map(e => `
     <tr>
@@ -395,9 +396,21 @@ async function refresh() {
       <td>${fmtTime(e.end_ts)}</td>
       <td>${e.detail || ""}</td>
     </tr>`).join("") || "<tr><td colspan=5>No events in this range.</td></tr>";
+
+  document.getElementById("updated").textContent =
+    "last updated " + new Date().toLocaleTimeString();
 }
 
-function drawChart(points) {
+function fmtAxisTime(ts, range) {
+  const d = new Date(ts * 1000);
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (range === "7d" || range === "30d") {
+    return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" }) + " " + time;
+  }
+  return time;
+}
+
+function drawChart(points, range) {
   const canvas = document.getElementById("chart");
   const ctx = canvas.getContext("2d");
   const w = canvas.width = canvas.clientWidth;
@@ -417,6 +430,17 @@ function drawChart(points) {
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - 10, y); ctx.stroke();
     ctx.fillText(Math.round((i / 4) * maxRtt) + "ms", 2, y + 3);
   }
+
+  // x-axis time labels
+  const tickCount = Math.min(5, n);
+  ctx.fillStyle = "#888";
+  for (let k = 0; k < tickCount; k++) {
+    const i = tickCount === 1 ? 0 : Math.round((k / (tickCount - 1)) * (n - 1));
+    const x = padL + (i / n) * plotW;
+    ctx.textAlign = k === 0 ? "left" : k === tickCount - 1 ? "right" : "center";
+    ctx.fillText(fmtAxisTime(points[i].ts, range), x, h - 4);
+  }
+  ctx.textAlign = "left";
 
   // loss bars
   ctx.fillStyle = "rgba(224,82,82,0.5)";
