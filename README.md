@@ -1,17 +1,19 @@
 # Echo Watcher
 
 A self-contained ping monitor: continuously pings a set of targets, logs every result to SQLite,
-and flags outages and latency spikes with exact UTC timestamps. Built to get evidence of
-intermittent connectivity problems an ISP claims not to see — a timestamped log instead of "it
+and flags outages and latency spikes with exact UTC timestamps. 
+
+Built to get evidence of
+intermittent connectivity problems my ISP claims not to see. A timestamped log instead of "it
 feels laggy sometimes".
 
 Single Docker container: background ping threads + a Flask dashboard in one process. No external
-DB, no CDN dependencies — the dashboard's chart is hand-rolled vanilla JS/canvas so it works fully
+DB, no CDN dependencies; the dashboard's chart is hand-rolled vanilla JS/canvas so it works fully
 offline.
 
 ## What it does
 
-- Pings every target (default: `1.1.1.1`, `8.8.8.8`, and the LAN gateway `192.168.1.254`) once a
+- Pings every target (default: `1.1.1.1`, `8.8.8.8`, and the LAN gateway) once a
   second via the system `ping` binary.
 - **Outage**: `OUTAGE_FAILS` (default 2) consecutive timeouts on a target opens an event, closed
   the moment a ping succeeds again, with duration.
@@ -21,9 +23,9 @@ offline.
 - Dashboard at `:8531` — per-target/per-range (1h/24h/7d/30d) summary cards (uptime %, packet
   loss %, avg/max latency, outage/spike counts), a latency chart with loss bars, and a live
   outage/spike table.
-- **Download events CSV** button (or `/export/events.csv`) — exportable, timestamped evidence.
+- **Download events CSV** button (or `/export/events.csv`) -> exportable, timestamped evidence.
 - Pinging your router's gateway alongside public targets tells "my LAN/WiFi is flaky" apart from
-  "problem is upstream of my router" — if only the public targets drop while the gateway stays up,
+  "problem is upstream of my router, if only the public targets drop while the gateway stays up,
   it's the ISP's problem.
 
 ![Dashboard showing per-target summary cards and a latency chart with hover tooltip support](docs/watcher.png)
